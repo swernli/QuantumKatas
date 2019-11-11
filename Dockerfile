@@ -20,6 +20,9 @@ RUN chown -R ${USER} ${HOME} && \
 
 USER ${USER}
 
+# Set debug logs
+RUN dotnet iqsharp install --user -l Debug
+
 # Pre-exec notebooks to improve first-use start time
 RUN ${HOME}/scripts/prebuild-kata.sh BasicGates
 RUN ${HOME}/scripts/prebuild-kata.sh CHSHGame
