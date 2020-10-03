@@ -9,6 +9,8 @@ namespace Quantum.Kata.DistinguishUnitaries {
     open Microsoft.Quantum.Measurement;
     open Microsoft.Quantum.Math;
     open Microsoft.Quantum.Arrays;
+    open Microsoft.Quantum.Characterization;
+    open Microsoft.Quantum.Preparation;
     
     
     //////////////////////////////////////////////////////////////////
@@ -93,9 +95,12 @@ namespace Quantum.Kata.DistinguishUnitaries {
     // You are allowed to apply the given operation and its adjoint/controlled variants at most twice.
     operation DistinguishHfromX (unitary : (Qubit => Unit is Adj+Ctl)) : Int {
         using (q = Qubit()) {
-            unitary(q);
-            X(q);
-            unitary(q);
+            within {
+                unitary(q);
+            }
+            apply {
+                X(q);
+            }
             return M(q) == One ? 1 | 0;
         }
     }
@@ -111,11 +116,16 @@ namespace Quantum.Kata.DistinguishUnitaries {
     // You are allowed to apply the given operation and its adjoint/controlled variants exactly once.
     operation DistinguishZfromMinusZ (unitary : (Qubit => Unit is Adj+Ctl)) : Int {
         using (qs = Qubit[2]) {
-            ApplyToEach(H, qs);
-            Controlled unitary([qs[0]], qs[1]);
-            Controlled Z([qs[1]], qs[0]);
-            ApplyToEach(H, qs);
-            return ResultArrayAsInt(MultiM(qs));
+            within {
+                //ApplyToEachA(H, qs);
+                H(qs[0]);
+            }
+            apply {
+                Controlled unitary([qs[0]], qs[1]);
+                //Controlled Z([qs[1]], qs[0]);
+            }
+            //return ResultArrayAsInt(MultiM(qs));
+            return M(qs[0]) == One ? 1 | 0;
         }
     }
     
@@ -132,11 +142,18 @@ namespace Quantum.Kata.DistinguishUnitaries {
     // You are allowed to apply the given operation and its adjoint/controlled variants exactly once.
     operation DistinguishRzFromR1 (unitary : ((Double, Qubit) => Unit is Adj+Ctl)) : Int {
         using (qs = Qubit[2]) {
-            ApplyToEach(H, qs);
-            Controlled unitary([qs[0]], (PI() * 2.0, qs[1]));
-            Controlled Adjoint Rz([qs[1]], (PI() * 2.0, qs[0]));
-            ApplyToEach(H, qs);
+            within {
+                ApplyToEachA(H, qs);
+            }
+            apply {
+                Controlled unitary([qs[0]], (PI() * 2.0, qs[1]));
+                Controlled Adjoint Rz([qs[1]], (PI() * 2.0, qs[0]));
+                // H(qs[0]);
+            }
             return 3 - ResultArrayAsInt(MultiM(qs));
+            // let r = M(qs[0]);
+            // Reset(qs[1]);
+            // return r == One ? 0 | 1;
         }
     }
 
@@ -151,10 +168,13 @@ namespace Quantum.Kata.DistinguishUnitaries {
     // You are allowed to apply the given operation and its adjoint/controlled variants at most twice.
     operation DistinguishYfromXZ (unitary : (Qubit => Unit is Adj+Ctl)) : Int {
         using (qs = Qubit[2]) {
-            ApplyToEach(H, qs);
-            Controlled unitary([qs[0]], qs[1]);
-            Controlled unitary([qs[0]], qs[1]);
-            ApplyToEach(H, qs);
+            within {
+                ApplyToEachA(H, Most(qs));
+            }
+            apply {
+                Controlled unitary([qs[0]], qs[1]);
+                Controlled unitary([qs[0]], qs[1]);
+            }
             return ResultArrayAsInt(MultiM(qs));
         }
     }
@@ -171,8 +191,23 @@ namespace Quantum.Kata.DistinguishUnitaries {
     //         3 if the given operation is the XZ gate.
     // You are allowed to apply the given operation and its adjoint/controlled variants at most three times.
     operation DistinguishYfromXZWithPhases (unitary : (Qubit => Unit is Adj+Ctl)) : Int {
-        // ...
-        return -1;
+        let YorXZ = DistinguishYfromXZ(unitary);
+        using (qs = Qubit[2]) {
+            within {
+                ApplyToEachA(H, qs);
+            }
+            apply {
+                if (YorXZ == 0) {
+                    Controlled Y([qs[1]], qs[0]);
+                }
+                else {
+                   Controlled X([qs[1]], qs[0]);
+                   Controlled Z([qs[1]], qs[0]);
+                }
+                Controlled Adjoint unitary([qs[1]], qs[0]);
+            }
+            return ResultArrayAsInt(MultiM(qs)) + YorXZ;
+        }
     }
 
 
@@ -187,8 +222,27 @@ namespace Quantum.Kata.DistinguishUnitaries {
     //         1 if the given operation is the Ry(θ) gate.
     // You are allowed to apply the given operation and its adjoint/controlled variants any number of times.
     operation DistinguishRzFromRy (theta : Double, unitary : (Qubit => Unit is Adj+Ctl)) : Int {
-        // ...
-        return -1;
+        // mutable count = 0.0;
+        // repeat {
+        //     set count = count + 1.0;
+        // }
+        // until ((count + 1.0) * theta > PI() * 1.2 or count * theta == PI());
+        // mutable limit = 10;
+        // mutable result = Zero;
+        // repeat {
+        //     using (q = Qubit()) {
+        //         for (times in 1..Floor(count)) {
+        //             unitary(q);
+        //         }
+        //         set result = MResetZ(q);
+        //     }
+        // }
+        // until (result == One or limit == 1)
+        // fixup {
+        //     set limit = limit - 1;
+        // }
+        // return ResultArrayAsInt([result]);
+        return Floor(EstimateOverlapBetweenStates(ApplyToEachA(unitary, _), ApplyToEachA(Ry(theta, _), _), 1, 1000000));
     }
 
 
@@ -203,8 +257,33 @@ namespace Quantum.Kata.DistinguishUnitaries {
     //         1 if the given operation is the R1(θ) gate.
     // You are allowed to apply the given operation and its adjoint/controlled variants any number of times.
     operation DistinguishRzFromR1WithAngle (theta : Double, unitary : (Qubit => Unit is Adj+Ctl)) : Int {
-        // ...
-        return -1;
+        // mutable count = 0.0;
+        // repeat {
+        //     set count = count + 1.0;
+        // }
+        // until ((count + 1.0) * theta > 2.0 * PI());
+        // mutable limit = 100.0 * ((2.0 * PI() / theta) - count);
+        // mutable isRz = 0;
+        // mutable isR1 = 0;
+        // for (looping in 1..Floor(limit)) {
+        //     using (qs = Qubit[2]) {
+        //         ApplyToEach(H, qs);
+        //         for (times in 1..Floor(count)) {
+        //             Controlled unitary([qs[0]], qs[1]);
+        //         }
+        //         // Controlled Rz ?
+        //         H(qs[0]);
+        //         if (M(qs[0]) == One) {
+        //             set isRz = isRz + 1;
+        //         }
+        //         else {
+        //             set isR1 = isR1 + 1;
+        //         }
+        //         Reset(qs[1]);
+        //     }
+        // }
+        // return isRz > isR1 ? 0 | 1;
+        return Floor(EstimateRealOverlapBetweenStates(ApplyToEachA(H, _),ApplyToEachCA(unitary, _), ApplyToEachCA(R1(theta, _), _), 1, 1000000));
     }
 
     
@@ -218,8 +297,16 @@ namespace Quantum.Kata.DistinguishUnitaries {
     //         3 if the given operation is the Z gate,
     // You are allowed to apply the given operation and its adjoint/controlled variants exactly once.
     operation DistinguishPaulis (unitary : (Qubit => Unit is Adj+Ctl)) : Int {
-        // ...
-        return -1;
+        using (qs = Qubit[2]) {
+            within {
+                PrepareEntangledState(Most(qs), Rest(qs));
+            }
+            apply {
+                unitary(Head(qs));
+            }
+            CNOT(Head(qs), Tail(qs));
+            return ResultArrayAsInt(Reversed(MultiM(qs)));
+        }
     }
 
 
@@ -239,7 +326,7 @@ namespace Quantum.Kata.DistinguishUnitaries {
     operation DistinguishIXfromCNOT (unitary : (Qubit[] => Unit is Adj+Ctl)) : Int {
         using (qs = Qubit[2]) {
             unitary(qs);
-            return 1 - ResultArrayAsInt(Reversed(MultiM(qs)));
+            return M(qs[1]) == One ? 0 | 1;
         }
     }
     
@@ -254,8 +341,13 @@ namespace Quantum.Kata.DistinguishUnitaries {
     //         1 if the given operation is CNOT₂₁.
     // You are allowed to apply the given operation and its adjoint/controlled variants exactly once.
     operation CNOTDirection (unitary : (Qubit[] => Unit is Adj+Ctl)) : Int {
-        // ...
-        return -1;
+        using(qs = Qubit[2]) {
+            X(qs[1]);
+            unitary(qs);
+            let r = M(qs[0]);
+            X(qs[1]);
+            return r == One ? 1 | 0;
+        }
     }
 
 
@@ -269,8 +361,11 @@ namespace Quantum.Kata.DistinguishUnitaries {
     //         1 if the given operation is the SWAP gate.
     // You are allowed to apply the given operation and its adjoint/controlled variants exactly once.
     operation DistinguishCNOTfromSWAP (unitary : (Qubit[] => Unit is Adj+Ctl)) : Int {
-        // ...
-        return -1;
+        using (qs = Qubit[2]) {
+            X(qs[1]);
+            unitary(qs);
+            return ResultArrayAsInt(Reversed(MultiM(qs))) - 1;
+        }
     }
 
 
@@ -287,7 +382,24 @@ namespace Quantum.Kata.DistinguishUnitaries {
     //         3 if the given operation is the SWAP gate.
     // You are allowed to apply the given operation and its adjoint/controlled variants at most twice.
     operation DistinguishTwoQubitUnitaries (unitary : (Qubit[] => Unit is Adj+Ctl)) : Int {
-        // ...
-        return -1;
+        using (qs = Qubit[2]) {
+            ApplyToEach(X, qs);
+            unitary(qs);
+            let i = ResultArrayAsInt(MultiM(qs));
+            if (i < 3) {
+                return 1 + CNOTDirection(unitary);
+            }
+            else {
+                X(qs[0]);
+                unitary(qs);
+                if (M(qs[0]) == One) {
+                    return 3;
+                }
+                else {
+                    X(qs[1]);
+                    return 0;
+                }
+            }
+        }
     }
 }
